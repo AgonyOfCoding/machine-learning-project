@@ -1,9 +1,9 @@
 # Machine learning project - Symbol classification in engineering diagrams
 
-This is the GitHub repository for the source code used in a machine learning project
+This is a repository for the source code developed in a machine learning project
 
-## Python scritps
+## Python scripts
 
 `preprocess_dataset.py`
 
-Skript that converts the dataset used in this project to format suitable for image classification.
+Script that converts the dataset used in this project to a format suitable for image classification.
