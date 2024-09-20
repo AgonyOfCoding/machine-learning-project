@@ -1,28 +1,58 @@
 import os
 import json
 from PIL import Image
-import shutil
 from tqdm import tqdm
 
+# These are the symbol classes included in the project
 included_classes = [
     "ProcessInstrumentationFunction",
     "Flange",
     "GateValve",
     "BallValve",
     "OPC",
-    "ActuatingSystemComponent",
+    "Actuator",
     "PipeFitting",
     "ConcentricDiameterChange",
-    "Actuator",
+    "OperatedValve",
     "Tank"
 ]
 
+# This function merges some similar symbol classes and renames custom classes to non-custom classes
+def curated_class_name(className):
+    prefix = "Custom"
+    if className.startswith(prefix):
+        return className[len(prefix):]
+    match className:
+        case "ActuatingSystemComponent":
+            return "Actuator"
+        case "BlindFlange":
+            return "Flange"
+        case "ClampedFlangeCoupling":
+            return "Flange"
+        case "ControlledActuator":
+            return "Actuator"
+        case "Controlvalvesandregulators":
+            return "BallValve"
+        case "FlangedConnection":
+            return "Flange"
+        case "FlowInPipeOffPageConnector":
+            return "OPC"
+        case "FlowInSignalOffPageConnector":
+            return "OPC"
+        case "FlowOutPipeOffPageConnector":
+            return "OPC"
+        case "GlobeValve":
+            return "BallValve"
+        case "Off-lineinstruments":
+            return "ProcessInstrumentationFunction"
+        case "PipeReducer":
+            return "ConcentricDiameterChange"
+        case "Systemfunctions":
+            return "ProcessInstrumentationFunction"
+        case _:
+            return className
+        
 def resize_and_center_symbol(cropped_image, target_size=128, symbol_max_size=123):
-    """
-    Resizes the cropped symbol to fit within a target size while maintaining aspect ratio.
-    The larger side of the symbol is resized to symbol_max_size pixels.
-    The symbol is then centered on a white background of target_size x target_size.
-    """
     # Determine the scaling factor
     width, height = cropped_image.size
     if width > height:
@@ -43,30 +73,11 @@ def resize_and_center_symbol(cropped_image, target_size=128, symbol_max_size=123
     paste_y = (target_size - new_height) // 2
     
     # Paste the resized symbol onto the background
-    new_image.paste(resized_symbol, (paste_x, paste_y), resized_symbol.convert("RGBA"))
+    new_image.paste(resized_symbol, (paste_x, paste_y), resized_symbol.convert("RGBA"))    
     
-    # Convert to RGB (optional, depending on your needs)
-    final_image = new_image.convert("RGB")
-    
-    return final_image
-
-def sanitize_class_name(class_name):
-    """
-    Sanitizes the class name to be a valid folder name.
-    Removes or replaces characters that are invalid in folder names.
-    """
-    valid_name = "".join(c if c.isalnum() or c in (' ', '_') else '_' for c in class_name)
-    valid_name = valid_name.replace(' ', '_')
-    return valid_name
+    return new_image
 
 def preprocess_dataset(root_dir, output_dir):
-    """
-    Preprocesses the dataset by cropping, resizing, and organizing symbols into class-specific folders.
-    
-    Parameters:
-    - root_dir: Path to the root directory containing project folders.
-    - output_dir: Path to the directory where processed images will be saved.
-    """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
@@ -78,12 +89,12 @@ def preprocess_dataset(root_dir, output_dir):
                        if os.path.isdir(os.path.join(root_dir, d))]
     
     for project in tqdm(project_folders, desc="Processing Projects"):
-        # Locate the JSON annotation file (assuming only one per project)
-        json_files = [f for f in os.listdir(project) if f.endswith('.json')]
-        if not json_files:
+        # Locate the JSON annotation file
+        json_file = [f for f in os.listdir(project) if f.endswith('.json')]
+        if not json_file:
             print(f"Warning: No JSON file found in project folder '{project}'. Skipping.")
             continue
-        json_path = os.path.join(project, json_files[0])
+        json_path = os.path.join(project, json_file[0])
         
         # Load JSON data
         with open(json_path, 'r') as f:
@@ -101,21 +112,21 @@ def preprocess_dataset(root_dir, output_dir):
             
             # Skip missing images
             if not os.path.exists(image_file):
-                print(f"Warning: Image file '{image_file}' does not exist. Skipping.")
                 continue
             
             try:
                 with Image.open(image_file) as img:
-                    img = img.convert("RGBA")  # Ensure image has an alpha channel for transparency
+                    img = img.convert("RGBA")
                     img_width, img_height = img.size
             except Exception as e:
                 print(f"Error: Failed to open image '{image_file}'. Error: {e}. Skipping.")
                 continue
             
-            # Process each label (symbol) in the selected image
+            # Process each label in the selected image
             labels = page.get("labels", [])
             for label in labels:
                 class_name = label.get("className", "unknown")
+                class_name = curated_class_name(class_name)
                 if (not (class_name in included_classes)):
                     continue
                 bbox = label.get("bbox", [])
@@ -123,31 +134,38 @@ def preprocess_dataset(root_dir, output_dir):
                     print(f"Warning: Invalid bbox for label in image '{image_file}'. Skipping label.")
                     continue
                 
-                x, y, width, height = bbox
+                x1, y1, x2, y2 = bbox
+                width = x2 - x1
+                height = y2 - y1
+
                 # Ensure bbox is within image boundaries
-                x = max(0, x)
-                y = max(0, y)
-                width = min(width, img_width - x)
-                height = min(height, img_height - y)
+                x1 = max(0, x1)
+                y1 = max(0, y1)
+                width = min(width, img_width - x1)
+                height = min(height, img_height - y1)
+
+                # Skip bad bboxes
+                if (x1 > x2 or y1 > y2 or width <= 0 or height <= 0):
+                    print(f"Warning: Invalid bbox coordinates for label in image '{image_file}'. Skipping label.")
+                    continue
                 
                 # Crop the symbol from the image
-                cropped = img.crop((x, y, x + width, y + height))
+                cropped = img.crop((x1, y1, x2, y2))
                 
                 # Resize and center the symbol
-                processed_symbol = resize_and_center_symbol(cropped, target_size=64, symbol_max_size=59)
+                processed_symbol = resize_and_center_symbol(cropped, target_size=128, symbol_max_size=123)
                 
                 # Sanitize class name for folder naming
-                sanitized_class = sanitize_class_name(class_name)
-                class_folder = os.path.join(output_dir, sanitized_class)
+                class_folder = os.path.join(output_dir, class_name)
                 if not os.path.exists(class_folder):
                     os.makedirs(class_folder)
                 
                 # Initialize or increment the image count for naming
-                if sanitized_class not in class_image_count:
-                    class_image_count[sanitized_class] = 1
+                if class_name not in class_image_count:
+                    class_image_count[class_name] = 1
                 else:
-                    class_image_count[sanitized_class] += 1
-                image_filename = f"image{class_image_count[sanitized_class]}.png"
+                    class_image_count[class_name] += 1
+                image_filename = f"image{class_image_count[class_name]}.png"
                 
                 # Save the processed symbol image
                 save_path = os.path.join(class_folder, image_filename)
@@ -160,10 +178,6 @@ def preprocess_dataset(root_dir, output_dir):
     print("Preprocessing completed successfully!")
 
 if __name__ == "__main__":
-    # Define the root directory containing project folders
-    ROOT_DIR = "./dataset_original"  # Replace with your actual root directory path
-    
-    # Define the output directory where processed images will be saved
-    OUTPUT_DIR = "./dataset_classification"  # Replace with your desired output directory path
-    
+    ROOT_DIR = "./dataset_original"
+    OUTPUT_DIR = "./dataset_classification"    
     preprocess_dataset(ROOT_DIR, OUTPUT_DIR)
