@@ -1,6 +1,6 @@
 # Machine learning project - Symbol classification in engineering diagrams
 
-This is the GitHub repository for the source code used in a machine learining project
+This is the GitHub repository for the source code used in a machine learning project
 
 ## Python scritps
 
