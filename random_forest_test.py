@@ -36,11 +36,9 @@ hog_features = extract_hog_features(X_images)
 y_labels = np.argmax(y_labels, axis=1)
 
 # Split the data into training (60%), validation (20%), and test (20%) sets
-X_train, X_temp, y_train, y_temp = train_test_split(hog_features, y_labels, test_size=0.4, random_state=42)
-X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(hog_features, y_labels, test_size=0.3, random_state=42)
 
 print(f"Training set: {len(X_train)} samples")
-print(f"Validation set: {len(X_val)} samples")
 print(f"Test set: {len(X_test)} samples")
 
 # Train a Random Forest classifier
@@ -50,19 +48,14 @@ rf.fit(X_train, y_train)
 # Evaluate on the training set
 y_train_pred = rf.predict(X_train)
 train_accuracy = accuracy_score(y_train, y_train_pred)
-print(f"Training Accuracy: {train_accuracy*100:.2f}%")
-
-# Evaluate on the validation set
-y_val_pred = rf.predict(X_val)
-val_accuracy = accuracy_score(y_val, y_val_pred)
-print(f"Validation Accuracy: {val_accuracy*100:.2f}%")
+print(f"Training accuracy: {train_accuracy*100:.2f}%")
 
 # Evaluate on the test set
 y_test_pred = rf.predict(X_test)
 test_accuracy = accuracy_score(y_test, y_test_pred)
-print(f"Test Accuracy: {test_accuracy*100:.2f}%")
+print(f"Test accuracy: {test_accuracy*100:.2f}%")
 
 # Generate the classification report for the test set
 report = classification_report(y_test, y_test_pred, target_names=class_names)
-print("Classification Report on Test Set:")
+print("Classification report on test set:")
 print(report)
